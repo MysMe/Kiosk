@@ -202,6 +202,11 @@ public:
                     sendMessage(VK_F11);
                 }
             }
+
+            //When edge full screens, it likes to put a pop-up telling you how to undo it, but it doesn't dissappear until the process gets some key inputs
+            //So after fullscreening, blast it with some inputs on the shift key (this shouldn't affect page content)
+            for (int i = 0; i < 10; i++)
+                sendMessage(VK_SHIFT);
         }
     }
 
