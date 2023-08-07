@@ -14,6 +14,7 @@
 #include <string>
 #include <iomanip>
 #include <sstream>
+#include <array>
 
 //Path to settings file
 static constexpr auto settingsSource = "Settings.txt";
@@ -32,6 +33,13 @@ struct appSettings
         FAIL,   //Stop program
         PASS,   //Show as many as possible
         NONE    //Don't show any
+    };
+
+    static constexpr std::array<std::pair<std::string_view, appSettings::invalidMonitorMode>, 3> monitorModeConversions
+    {
+        std::pair<std::string_view, appSettings::invalidMonitorMode>{ "FAIL", appSettings::invalidMonitorMode::FAIL },
+        std::pair<std::string_view, appSettings::invalidMonitorMode>{ "PASS", appSettings::invalidMonitorMode::PASS },
+        std::pair<std::string_view, appSettings::invalidMonitorMode>{ "NONE", appSettings::invalidMonitorMode::NONE },
     };
 
     //How to act when we don't have the correct number of monitors
@@ -432,6 +440,13 @@ struct fileWatch
         RESET,
         REFRESH
     };
+
+    static constexpr std::array<std::pair<std::string_view, fileWatch::action>, 2> actionConversions
+    {
+        std::pair<std::string_view, fileWatch::action>{ "RESET", fileWatch::action::RESET},
+        std::pair<std::string_view, fileWatch::action>{ "REFRESH", fileWatch::action::REFRESH },
+    };
+
     //What to do when the file changes
     action onUpdate = action::RESET;
     //Last detected file change time
@@ -502,19 +517,12 @@ void parseSettings(std::vector<fileWatch>& watches)
         }
         else if (settingName == "INVALIDMONITORS")
         {
-            static std::vector<std::pair<std::string, appSettings::invalidMonitorMode>> conversions
-            {
-                {"FAIL", appSettings::invalidMonitorMode::FAIL},
-                {"PASS", appSettings::invalidMonitorMode::PASS},
-                {"NONE", appSettings::invalidMonitorMode::NONE},
-            };
-
             std::string arg;
             stream >> arg;
             arg = toUpper(arg);
 
-            auto convIt = std::ranges::find_if(conversions, [&](auto kv) {return kv.first == arg; });
-            if (convIt == conversions.end())
+            auto convIt = std::ranges::find_if(appSettings::monitorModeConversions, [&](auto kv) {return kv.first == arg; });
+            if (convIt == appSettings::monitorModeConversions.end())
             {
                 throw std::exception("Invalid INVALIDMONITORS setting found in settings file, acceptable options are FAIL, PASS or NONE.");
             }
@@ -563,18 +571,12 @@ void parseSettings(std::vector<fileWatch>& watches)
             std::string path;
             stream >> std::quoted(path);
 
-            static std::vector<std::pair<std::string, fileWatch::action>> conversions
-            {
-                {"RESET", fileWatch::action::RESET},
-                {"REFRESH", fileWatch::action::REFRESH},
-            };
-
             std::string arg;
             stream >> std::ws >> arg;
             arg = toUpper(arg);
 
-            auto convIt = std::ranges::find_if(conversions, [&](auto kv) {return kv.first == arg; });
-            if (convIt == conversions.end())
+            auto convIt = std::ranges::find_if(fileWatch::actionConversions, [&](auto kv) {return kv.first == arg; });
+            if (convIt == fileWatch::actionConversions.end())
             {
                 throw std::exception("Invalid WATCH action found in settings file, acceptable options are RESET or REFRESH.");
             }
@@ -670,6 +672,7 @@ void disableAnsiSequences()
 //Clears any ansi state, existing processes and resets the terminal ansi status
 void cleanUp()
 {
+    std::cout << "Cleaning up.\n";
     closeAllExisting();
     //Reset ansi sequence
     std::cout << osm::feat(osm::rst, "all");
@@ -683,7 +686,6 @@ BOOL WINAPI closeHandler(DWORD signal)
 {
     if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT)
     {
-
         cleanUp();
         std::cout << "Goodbye!\n";
         std::exit(0);
@@ -722,7 +724,9 @@ int main(int argc, char** argv)
 
         printSetting("MONITORS [INT] - How many monitors the application should expect.", std::to_string(settings.monitors));
 
-        printSetting("INVALIDMONITORS [FAIL|PASS|NONE] - How the application should react if the number of monitors doesn't match.", "FIRST", std::vector<std::pair<std::string_view, std::string_view>>{
+        auto invalidMonitorDefaultString = std::ranges::find_if(appSettings::monitorModeConversions, [&](const auto& kvp) {return kvp.second == settings.monitorMode; })->first;
+
+        printSetting("INVALIDMONITORS [FAIL|PASS|NONE] - How the application should react if the number of monitors doesn't match.", invalidMonitorDefaultString, std::vector<std::pair<std::string_view, std::string_view>> {
             std::pair<std::string_view, std::string_view>{"FAIL", "Stop the application if the monitors don't match." },
             std::pair<std::string_view, std::string_view>{"PASS", "Show as many urls on the monitors that are present (e.g. if there are three urls and 2 monitors, shows the first two). The MONITORS setting is not considered, and will show as many urls as possible." },
             std::pair<std::string_view, std::string_view>{"NONE", "No urls are shown, but the application will continue to poll the monitors in case they change." }});
@@ -740,6 +744,8 @@ int main(int argc, char** argv)
             std::vector<std::pair<std::string_view, std::string_view>>{
             std::pair<std::string_view, std::string_view>{"REFRESH", "The given monitor is refreshed as though F5 was pressed." },
             std::pair<std::string_view, std::string_view>{"RESET", "The given monitor is closed and reopened." }});
+
+        cleanUp();
 
         return 0;
     }
