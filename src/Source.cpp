@@ -375,20 +375,34 @@ void addProcess(std::vector<process>& processes, const std::string& url, int sle
 {
     //Start the process, give it a moment to load and then capture its ids
     createProcess(settings.executableName, url);
-    std::this_thread::sleep_for(std::chrono::seconds(sleepSecs));
-    auto instances = getMostRecentProcessesWithName(settings.processName);
+    
+    while (true)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(sleepSecs));
+        auto instances = getMostRecentProcessesWithName(settings.processName);
 
-    //Record the urls
-    for (auto& i : instances)
-        i.url = url;
+        //Record the urls
+        for (auto& i : instances)
+            i.url = url;
 
-    //A single process can have many windows, filter out the ones we're already using as we know we don't want them
-    std::erase_if(instances, [&](process l) {return std::ranges::any_of(processes, [&](process r) { return r.windowHandle == l.windowHandle; }); });
+        //A single process can have many windows, filter out the ones we're already using as we know we don't want them
+        std::erase_if(instances, [&](process l) {return std::ranges::any_of(processes, [&](process r) { return r.windowHandle == l.windowHandle; }); });
 
-    //Ensure we only find one window, if we find more then it's likely some were already running 
-    if (instances.size() != 1)
-        throw std::exception("Added process was ambiguous. Consider enabling CLOSEONSTART.\"");
-    processes.insert(processes.begin() + where, instances[0]);
+        //Ensure we only find one window, if we find more then it's likely some were already running 
+        if (instances.size() == 0)
+        {
+            //If we haven't found any windows, it's likely they haven't loaded yet and we should retry
+            std::cout << osm::feat(osm::col, "orange") << "Failed to register process but will retry. Consider increasing LOADTIME.\n";
+            continue;
+        }
+
+        //If we find too many processes, something's gone wrong and we can't continue (we don't know which process to hook onto)
+        if (instances.size() > 1)
+            throw std::exception("Added process was ambiguous. Consider enabling CLOSEONSTART.");
+
+        processes.insert(processes.begin() + where, instances[0]);
+        return;
+    }
 }
 
 //Closes all instances of the process
@@ -930,7 +944,6 @@ int main(int argc, char** argv)
                     }
                 }
             }
-
         }
     }
     catch (std::exception& ex)
