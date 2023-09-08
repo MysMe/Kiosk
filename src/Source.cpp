@@ -371,38 +371,39 @@ std::vector<process> getMostRecentProcessesWithName(const std::string& name)
 }
 
 //Starts a new instance of the process and adds it to the process list at the given location
-void addProcess(std::vector<process>& processes, const std::string& url, int sleepSecs, size_t where)
+[[nodiscard]]
+bool addProcess(std::vector<process>& processes, const std::string& url, int sleepSecs, size_t where)
 {
     //Start the process, give it a moment to load and then capture its ids
     createProcess(settings.executableName, url);
     
-    while (true)
+    std::this_thread::sleep_for(std::chrono::seconds(sleepSecs));
+    auto instances = getMostRecentProcessesWithName(settings.processName);
+
+    //Record the urls
+    for (auto& i : instances)
+        i.url = url;
+
+    //A single process can have many windows, filter out the ones we're already using as we know we don't want them
+    std::erase_if(instances, [&](process l) {return std::ranges::any_of(processes, [&](process r) { return r.windowHandle == l.windowHandle; }); });
+
+    //Ensure we only find one window, if we find more then it's likely some were already running 
+    if (instances.size() == 0)
     {
-        std::this_thread::sleep_for(std::chrono::seconds(sleepSecs));
-        auto instances = getMostRecentProcessesWithName(settings.processName);
-
-        //Record the urls
-        for (auto& i : instances)
-            i.url = url;
-
-        //A single process can have many windows, filter out the ones we're already using as we know we don't want them
-        std::erase_if(instances, [&](process l) {return std::ranges::any_of(processes, [&](process r) { return r.windowHandle == l.windowHandle; }); });
-
-        //Ensure we only find one window, if we find more then it's likely some were already running 
-        if (instances.size() == 0)
-        {
-            //If we haven't found any windows, it's likely they haven't loaded yet and we should retry
-            std::cout << osm::feat(osm::col, "orange") << "Failed to register process but will retry. Consider increasing LOADTIME.\n";
-            continue;
-        }
-
-        //If we find too many processes, something's gone wrong and we can't continue (we don't know which process to hook onto)
-        if (instances.size() > 1)
-            throw std::exception("Added process was ambiguous. Consider enabling CLOSEONSTART.");
-
-        processes.insert(processes.begin() + where, instances[0]);
-        return;
+        //If we haven't found any windows, it's likely they haven't loaded yet and we should reset and try again
+        std::cout << osm::feat(osm::col, "orange") << "Failed to register process and will reset. Consider increasing LOADTIME.\n";
+        return false;
     }
+
+    //If we find too many processes, something's gone wrong and we can't continue (we don't know which process to hook onto)
+    if (instances.size() > 1)
+    {
+        std::cout << osm::feat(osm::col, "orange") << "Failed to register process and will reset. Too many processes were found.\n";
+        return false;
+    }
+
+    processes.insert(processes.begin() + where, instances[0]);
+    return true;
 }
 
 //Closes all instances of the process
@@ -712,6 +713,12 @@ BOOL WINAPI closeHandler(DWORD signal)
     return TRUE;
 }
 
+void resetWindows(std::vector<rect>& monitors)
+{
+    std::cout << osm::feat(osm::col, "orange") << "Resetting...\n";
+    monitors.clear();
+    closeAllExisting();
+}
 
 int main(int argc, char** argv)
 {
@@ -797,6 +804,9 @@ int main(int argc, char** argv)
 
         //Skip the watchdog sleep on the first loop
         bool skipDelay = true;
+
+        //Used for emergency resets
+        reset:
         while (true)
         {
             if (!skipDelay)
@@ -875,8 +885,15 @@ int main(int argc, char** argv)
                 if (i >= processes.size())
                 {
                     std::cout << osm::feat(osm::col, "lt cyan") << "Starting \"" << urls[i] << "\"...\n";
-                    addProcess(processes, urls[i], settings.loadTime, i);
-                    processes[i].moveToMonitor(monitors[i]);
+                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    {
+                        processes[i].moveToMonitor(monitors[i]);
+                    }
+                    else
+                    {
+                        resetWindows(monitors);
+                        goto reset;
+                    }
                 }
 
                 //If the process url has changed, restart it with the new url
@@ -885,8 +902,16 @@ int main(int argc, char** argv)
                     std::cout << osm::feat(osm::col, "lt cyan") << "\"" << processes[i].url << "\" has been changed to \"" << urls[i] << "\", restarting page...\n";
                     processes[i].close();
                     processes.erase(processes.begin() + i);
-                    addProcess(processes, urls[i], settings.loadTime, i);
-                    processes[i].moveToMonitor(monitors[i]);
+                    
+                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    {
+                        processes[i].moveToMonitor(monitors[i]);
+                    }
+                    else
+                    {
+                        resetWindows(monitors);
+                        goto reset;
+                    }
                 }
             }
 
@@ -923,8 +948,16 @@ int main(int argc, char** argv)
                             std::cout << osm::feat(osm::col, "lt cyan") << "\tWatch event specified that monitor " << p << " should be reset, resetting...\n";
                             processes[p].close();
                             processes.erase(processes.begin() + p);
-                            addProcess(processes, urls[p], settings.loadTime, p);
-                            processes[p].moveToMonitor(monitors[p]);
+
+                            if (addProcess(processes, urls[p], settings.loadTime, p))
+                            {
+                                processes[p].moveToMonitor(monitors[p]);
+                            }
+                            else
+                            {
+                                resetWindows(monitors);
+                                goto reset;
+                            }
                         }
                     }
                     else if (i.onUpdate == fileWatch::action::REFRESH)
