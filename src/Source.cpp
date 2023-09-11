@@ -915,6 +915,27 @@ int main(int argc, char** argv)
                 }
             }
 
+            //If any windows are closed, reopen them
+            for (size_t i = 0; i < std::min(monitors.size(), urls.size()); i++)
+            {
+                if (!processes[i].valid())
+                {
+                    std::cout << osm::feat(osm::col, "orange") << "Monitor " << i << " appears to have closed! Reopening...\n";
+                    processes[i].close();
+                    processes.erase(processes.begin() + i);
+
+                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    {
+                        processes[i].moveToMonitor(monitors[i]);
+                    }
+                    else
+                    {
+                        resetWindows(monitors);
+                        goto reset;
+                    }
+                }
+            }
+
             //If any monitors are wrong, try resetting their position
             for (size_t i = 0; i < std::min(monitors.size(), urls.size()); i++)
             {
