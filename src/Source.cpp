@@ -187,7 +187,9 @@ public:
     {
         if (valid())
         {
-            while (!getBounds().approximately(monitor))
+            //Only try up to 5 times to sort the window, otherwise ignore it and move on
+            int fail = 5;
+            while (!getBounds().approximately(monitor) && fail-- > 0)
             {
                 //Move to the given monitor
                 SetWindowPos(windowHandle, NULL, monitor.left, monitor.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
