@@ -439,34 +439,42 @@ std::vector<std::string> readUrls()
     return result;
 }
 
-//Parameters used for a file watch
-struct fileWatch
+struct basicWatch
 {
-    //Which monitors to update
-    std::vector<int> relatedMonitors;
-    //Path to the watched file
-    std::string filePath;
-
     enum class action
     {
         RESET,
         REFRESH
     };
 
-    static constexpr std::array<std::pair<std::string_view, fileWatch::action>, 2> actionConversions
+    static constexpr std::array<std::pair<std::string_view, basicWatch::action>, 2> actionConversions
     {
-        std::pair<std::string_view, fileWatch::action>{ "RESET", fileWatch::action::RESET},
-        std::pair<std::string_view, fileWatch::action>{ "REFRESH", fileWatch::action::REFRESH },
+        std::pair<std::string_view, basicWatch::action>{ "RESET", basicWatch::action::RESET},
+        std::pair<std::string_view, basicWatch::action>{ "REFRESH", basicWatch::action::REFRESH },
     };
 
     //What to do when the file changes
     action onUpdate = action::RESET;
     //Last detected file change time
     std::chrono::system_clock::time_point lastTime = std::chrono::system_clock::now();
+
+    //Which monitors to update
+    std::vector<int> relatedMonitors;
 };
 
-//Converts a string to a wide string
-std::wstring toWString(const std::string& src) { return { src.begin(), src.end() }; }
+//Parameters used for a file watch
+struct fileWatch : basicWatch
+{
+    //Path to the watched file
+    std::string filePath;
+};
+
+//Parameters used for a refresh timer
+struct refreshTimer : basicWatch
+{
+    //How many seconds to wait per update
+    unsigned int delaySeconds = 2;
+};
 
 //Converts a string to uppercase
 std::string toUpper(std::string str) 
@@ -490,13 +498,14 @@ std::string trim(const std::string& src)
 
 //Reads in settings file and updates global settings
 //Resets watches
-void parseSettings(std::vector<fileWatch>& watches)
+void parseSettings(std::vector<fileWatch>& watches, std::vector<refreshTimer>& refreshes)
 {
     std::ifstream file{ settingsSource };
     if (!file.is_open())
         throw std::exception("Unable to read settings file.");
 
     watches.clear();
+    refreshes.clear();
 
     std::string line;
     while (std::getline(file, line))
@@ -602,7 +611,49 @@ void parseSettings(std::vector<fileWatch>& watches)
                     mons.push_back(val);
             }
 
-            watches.emplace_back(fileWatch{ std::move(mons), path, convIt->second });
+            fileWatch watch;
+            watch.relatedMonitors = std::move(mons);
+            watch.filePath = std::move(path);
+            watch.onUpdate = convIt->second;
+
+            watches.emplace_back(std::move(watch));
+        }
+        else if (settingName == "EVERY")
+        {
+            unsigned int refreshTime = 0;
+            stream >> refreshTime;
+            if (!stream)
+            {
+                throw std::exception("Unable to parse delay from EVERY command.");
+            }
+
+            std::string arg;
+            stream >> std::ws >> arg;
+            arg = toUpper(arg);
+
+            auto convIt = std::ranges::find_if(fileWatch::actionConversions, [&](auto kv) {return kv.first == arg; });
+            if (convIt == fileWatch::actionConversions.end())
+            {
+                throw std::exception("Invalid WATCH action found in settings file, acceptable options are RESET or REFRESH.");
+            }
+
+            std::vector<int> mons;
+            while (stream)
+            {
+                int val;
+                stream >> val;
+                if (stream)
+                    mons.push_back(val);
+            }
+
+            refreshTimer timer;
+            timer.relatedMonitors = std::move(mons);
+            timer.delaySeconds = refreshTime;
+            timer.onUpdate = convIt->second;
+            //Note that this constructs to the current time
+            timer.lastTime += std::chrono::seconds(refreshTime);
+
+            refreshes.emplace_back(std::move(timer));
         }
         else
         {
@@ -711,6 +762,54 @@ void resetWindows(std::vector<rect>& monitors)
     closeAllExisting();
 }
 
+//Performs the effect of the watch, returns false if the update failed and the process needs to reset
+[[nodiscard]]
+bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::vector<std::string>& urls, std::vector<rect>& monitors)
+{
+    if (watch.onUpdate == fileWatch::action::RESET)
+    {
+        for (auto p : watch.relatedMonitors)
+        {
+            if (p >= processes.size())
+            {
+                std::cout << osm::feat(osm::col, "orange") << "\tEvent specified that monitor " << p << " should be reset, but this monitor is not initialised. Skipped.\n";
+                continue;
+            }
+
+            //Close the process and restart it
+            std::cout << osm::feat(osm::col, "lt cyan") << "\tEvent specified that monitor " << p << " should be reset, resetting...\n";
+            processes[p].close();
+            processes.erase(processes.begin() + p);
+
+            if (addProcess(processes, urls[p], settings.loadTime, p))
+            {
+                processes[p].moveToMonitor(monitors[p]);
+            }
+            else
+            {
+                resetWindows(monitors);
+                return false;
+            }
+        }
+    }
+    else if (watch.onUpdate == fileWatch::action::REFRESH)
+    {
+        for (auto p : watch.relatedMonitors)
+        {
+            if (p >= processes.size())
+            {
+                std::cout << osm::feat(osm::col, "lt orange") << "\tEvent specified that monitor " << p << " should be refreshed, but this monitor is not initialised. Skipped.\n";
+                continue;
+            }
+
+            std::cout << osm::feat(osm::col, "lt cyan") << "\tEvent specified that monitor " << p << " should be refreshed, refreshing...\n";
+            //Send a refresh (f5) request
+            processes[p].sendMessage(VK_F5);
+        }
+    }
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     if (!SetConsoleCtrlHandler(closeHandler, TRUE))
@@ -762,6 +861,12 @@ int main(int argc, char** argv)
             std::pair<std::string_view, std::string_view>{"REFRESH", "The given monitor is refreshed as though F5 was pressed." },
             std::pair<std::string_view, std::string_view>{"RESET", "The given monitor is closed and reopened." }});
 
+        printSetting("EVERY [SECONDS] [REFRESH|RESET] [INT] [INT]... - Adds a timed watcher to the given path that performs the specified action to the given monitors every SECONDS seconds.",
+            "No default. Multiple EVERY settings may be provided to occur at different times.",
+            std::vector<std::pair<std::string_view, std::string_view>>{
+            std::pair<std::string_view, std::string_view>{"REFRESH", "The given monitor is refreshed as though F5 was pressed." },
+                std::pair<std::string_view, std::string_view>{"RESET", "The given monitor is closed and reopened." }});
+
         cleanUp();
 
         return 0;
@@ -769,6 +874,7 @@ int main(int argc, char** argv)
     try
     {
         std::vector<fileWatch> watches;
+        std::vector<refreshTimer> refreshes;
         std::vector<process> processes;
 
         //Monitors before and after checking
@@ -778,7 +884,7 @@ int main(int argc, char** argv)
 
         //Read settings file
         std::chrono::system_clock::time_point lastSettingsCheck = std::chrono::system_clock::now();
-        parseSettings(watches);
+        parseSettings(watches, refreshes);
 
         std::cout << osm::feat(osm::col, "green") << "Parsed settings file correctly.\n";
 
@@ -814,7 +920,7 @@ int main(int argc, char** argv)
             {
                 std::cout << osm::feat(osm::col, "lt cyan") << "Settings file has updated, reloading settings and urls...\n";
                 lastSettingsCheck = std::chrono::system_clock::now();
-                parseSettings(watches);
+                parseSettings(watches, refreshes);
                 //Read the urls again just in case the path to the url file changed
                 readUrls();
                 printUrls(urls);
@@ -943,48 +1049,28 @@ int main(int argc, char** argv)
                     std::cout << osm::feat(osm::col, "lt cyan") << "Watched file \"" << i.filePath << "\" has been updated, applying changes...\n";
                     //Reset the watched file time
                     i.lastTime = std::chrono::system_clock::now();
+                    if (!applyWatch(i, processes, urls, monitors))
+                        goto reset;
+                }
+            }
 
-                    if (i.onUpdate == fileWatch::action::RESET)
+            //Check if any refresh timers have expired
+            const auto now = std::chrono::system_clock::now();
+            for (auto& i : refreshes)
+            {
+                if (now > i.lastTime)
+                {
+                    std::cout << osm::feat(osm::col, "lt cyan") << "Refresh timer for [";
+                    for (size_t m = 0; m < i.relatedMonitors.size() - 1; m++)
                     {
-                        for (auto p : i.relatedMonitors)
-                        {
-                            if (p >= processes.size())
-                            {
-                                std::cout << osm::feat(osm::col, "orange") << "\tWatch event specified that monitor " << p << " should be reset, but this monitor is not initialised. Skipped.\n";
-                                continue;
-                            }
-
-                            //Close the process and restart it
-                            std::cout << osm::feat(osm::col, "lt cyan") << "\tWatch event specified that monitor " << p << " should be reset, resetting...\n";
-                            processes[p].close();
-                            processes.erase(processes.begin() + p);
-
-                            if (addProcess(processes, urls[p], settings.loadTime, p))
-                            {
-                                processes[p].moveToMonitor(monitors[p]);
-                            }
-                            else
-                            {
-                                resetWindows(monitors);
-                                goto reset;
-                            }
-                        }
+                        std::cout << m << ", ";
                     }
-                    else if (i.onUpdate == fileWatch::action::REFRESH)
-                    {
-                        for (auto p : i.relatedMonitors)
-                        {
-                            if (p >= processes.size())
-                            {
-                                std::cout << osm::feat(osm::col, "lt orange") <<  "\tWatch event specified that monitor " << p << " should be refreshed, but this monitor is not initialised. Skipped.\n";
-                                continue;
-                            }
-
-                            std::cout << osm::feat(osm::col, "lt cyan") << "\tWatch event specified that monitor " << p << " should be refreshed, refreshing...\n";
-                            //Send a refresh (f5) request
-                            processes[p].sendMessage(VK_F5);
-                        }
-                    }
+                    std::cout << i.relatedMonitors.back();
+                    std::cout << "] has expired, applying changes...\n";
+                    //Reset the watched file time
+                    i.lastTime = now + std::chrono::seconds(i.delaySeconds);
+                    if (!applyWatch(i, processes, urls, monitors))
+                        goto reset;
                 }
             }
         }
