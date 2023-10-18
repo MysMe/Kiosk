@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <sstream>
 #include <array>
+#include <filesystem>
 
 //Path to settings file
 static constexpr auto settingsSource = "Settings.txt";
@@ -418,21 +419,10 @@ void closeAllExisting()
 }
 
 //Checks if the file update time has been reset since the given time
-bool hasFileUpdatedSince(const std::wstring& filePath, const FILETIME& specificTime)
+bool hasFileUpdatedSince(const std::string_view& filePath, const std::chrono::system_clock::time_point specificTime)
 {
-    HANDLE hFile = CreateFileW(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hFile != INVALID_HANDLE_VALUE)
-    {
-        FILETIME fileTime;
-        if (GetFileTime(hFile, nullptr, nullptr, &fileTime))
-        {
-            CloseHandle(hFile);
-            //Compare the file's last modification time with the specific time
-            return CompareFileTime(&fileTime, &specificTime) > 0;
-        }
-        CloseHandle(hFile);
-    }
-    return false;
+    auto updateTime = std::chrono::clock_cast<std::chrono::system_clock>(std::filesystem::last_write_time(filePath));
+    return updateTime > specificTime;
 }
 
 //Reads in the urls file
@@ -472,7 +462,7 @@ struct fileWatch
     //What to do when the file changes
     action onUpdate = action::RESET;
     //Last detected file change time
-    FILETIME lastTime;
+    std::chrono::system_clock::time_point lastTime = std::chrono::system_clock::now();
 };
 
 //Converts a string to a wide string
@@ -488,8 +478,8 @@ std::string toUpper(std::string str)
 //Removes leading/trailing whitespace
 std::string trim(const std::string& src)
 {
-    size_t start = std::find_if_not(src.begin(), src.end(), std::isspace) - src.begin();
-    size_t end = src.size() - (std::find_if_not(src.rbegin(), src.rend(), std::isspace) - src.rbegin());
+    size_t start = std::find_if_not(src.begin(), src.end(), [](char v) { return std::isspace(static_cast<unsigned char>(v)); }) - src.begin();
+    size_t end = src.size() - (std::find_if_not(src.rbegin(), src.rend(), [](char v) { return std::isspace(static_cast<unsigned char>(v)); }) - src.rbegin());
     if (start >= end)
     {
         //Input contains only whitespace
@@ -613,7 +603,6 @@ void parseSettings(std::vector<fileWatch>& watches)
             }
 
             watches.emplace_back(fileWatch{ std::move(mons), path, convIt->second });
-            GetSystemTimeAsFileTime(&watches.back().lastTime);
         }
         else
         {
@@ -788,8 +777,7 @@ int main(int argc, char** argv)
 
 
         //Read settings file
-        FILETIME lastSettingsCheck;
-        GetSystemTimeAsFileTime(&lastSettingsCheck);
+        std::chrono::system_clock::time_point lastSettingsCheck = std::chrono::system_clock::now();
         parseSettings(watches);
 
         std::cout << osm::feat(osm::col, "green") << "Parsed settings file correctly.\n";
@@ -798,8 +786,7 @@ int main(int argc, char** argv)
             closeAllExisting();
 
         //Read urls file
-        FILETIME lastUrlCheck;
-        GetSystemTimeAsFileTime(&lastUrlCheck);
+        std::chrono::system_clock::time_point lastUrlCheck = std::chrono::system_clock::now();
         std::vector<std::string> urls = readUrls();
         printUrls(urls);
 
@@ -823,10 +810,10 @@ int main(int argc, char** argv)
 
 
             //Check if the settings file has updated
-            if (hasFileUpdatedSince(toWString(settingsSource), lastSettingsCheck))
+            if (hasFileUpdatedSince(settingsSource, lastSettingsCheck))
             {
                 std::cout << osm::feat(osm::col, "lt cyan") << "Settings file has updated, reloading settings and urls...\n";
-                GetSystemTimeAsFileTime(&lastSettingsCheck);
+                lastSettingsCheck = std::chrono::system_clock::now();
                 parseSettings(watches);
                 //Read the urls again just in case the path to the url file changed
                 readUrls();
@@ -834,10 +821,10 @@ int main(int argc, char** argv)
             }
 
             //Check if the urls file has updated
-            if (hasFileUpdatedSince(toWString(settings.urlsFile), lastUrlCheck))
+            if (hasFileUpdatedSince(settings.urlsFile, lastUrlCheck))
             {
                 std::cout << osm::feat(osm::col, "lt cyan") << "Urls file has updated, reloading urls...\n";
-                GetSystemTimeAsFileTime(&lastUrlCheck);
+                lastUrlCheck = std::chrono::system_clock::now();
                 size_t urlCount = urls.size();
                 urls = readUrls();
                 printUrls(urls);
@@ -951,11 +938,11 @@ int main(int argc, char** argv)
             //Check if any watched files have updated
             for (auto& i : watches)
             {
-                if (hasFileUpdatedSince(toWString(i.filePath), i.lastTime))
+                if (hasFileUpdatedSince(i.filePath, i.lastTime))
                 {
                     std::cout << osm::feat(osm::col, "lt cyan") << "Watched file \"" << i.filePath << "\" has been updated, applying changes...\n";
                     //Reset the watched file time
-                    GetSystemTimeAsFileTime(&i.lastTime);
+                    i.lastTime = std::chrono::system_clock::now();
 
                     if (i.onUpdate == fileWatch::action::RESET)
                     {
