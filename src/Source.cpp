@@ -798,7 +798,7 @@ bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::v
         {
             if (p >= processes.size())
             {
-                std::cout << osm::feat(osm::col, "lt orange") << "\tEvent specified that monitor " << p << " should be refreshed, but this monitor is not initialised. Skipped.\n";
+                std::cout << osm::feat(osm::col, "orange") << "\tEvent specified that monitor " << p << " should be refreshed, but this monitor is not initialised. Skipped.\n";
                 continue;
             }
 
