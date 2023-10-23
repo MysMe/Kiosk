@@ -421,22 +421,10 @@ void closeAllExisting()
 //Checks if the file update time has been reset since the given time
 bool hasFileUpdatedSince(const std::string_view& filePath, const std::chrono::system_clock::time_point specificTime)
 {
+    if (!std::filesystem::exists(filePath))
+        return false;
     auto updateTime = std::chrono::clock_cast<std::chrono::system_clock>(std::filesystem::last_write_time(filePath));
     return updateTime > specificTime;
-}
-
-//Reads in the urls file
-std::vector<std::string> readUrls()
-{
-    std::ifstream file{ settings.urlsFile };
-    if (!file.is_open())
-        throw std::exception("Unable to read urls file.");
-
-    std::vector<std::string> result;
-    std::string line;
-    while (std::getline(file, line))
-        result.emplace_back(std::move(line));
-    return result;
 }
 
 struct basicWatch
@@ -495,6 +483,65 @@ std::string trim(const std::string& src)
     }
     return src.substr(start, end - start);
 }
+
+
+struct urlWithWatch
+{
+    std::string url;
+    std::optional<refreshTimer> watch;
+};
+
+//Reads in the urls file
+std::vector<urlWithWatch> readUrls()
+{
+    std::ifstream file{ settings.urlsFile };
+    if (!file.is_open())
+        throw std::exception("Unable to read urls file.");
+
+    std::vector<urlWithWatch> result;
+    std::string line;
+    while (std::getline(file, line))
+    {
+        if (line.empty() || line.front() == '#')
+            continue;
+        std::stringstream stream{ line };
+        urlWithWatch current;
+        stream >> current.url;
+
+        std::string arg;
+        stream >> std::ws >> arg;
+        if (!stream)
+        {
+            result.emplace_back(std::move(current));
+            continue;
+        }
+        arg = toUpper(arg);
+
+        auto convIt = std::ranges::find_if(fileWatch::actionConversions, [&](auto kv) {return kv.first == arg; });
+        if (convIt == fileWatch::actionConversions.end())
+        {
+            throw std::exception("Invalid URL action found in URLs file, acceptable options are RESET or REFRESH.");
+        }
+
+        unsigned int refreshTime = 0;
+        stream >> refreshTime;
+        if (!stream)
+        {
+            throw std::exception("Unable to parse delay from URL action command.");
+        }
+
+
+        refreshTimer timer;
+        timer.delaySeconds = refreshTime;
+        timer.onUpdate = convIt->second;
+        //Note that this constructs to the current time
+        timer.lastTime += std::chrono::seconds(refreshTime);
+        current.watch = std::move(timer);
+        result.emplace_back(std::move(current));
+    }
+    return result;
+}
+
 
 //Reads in settings file and updates global settings
 //Resets watches
@@ -677,7 +724,7 @@ void printSetting(std::string_view summary, std::string_view defaultValue, std::
 }
 
 //Prints the currently found urls or a warning if none are found
-void printUrls(const std::vector<std::string>& urls)
+void printUrls(const std::vector<urlWithWatch>& urls)
 {
     if (urls.empty())
     {
@@ -687,7 +734,7 @@ void printUrls(const std::vector<std::string>& urls)
     {
         std::cout << osm::feat(osm::col, "green") << "Read " << urls.size() << " urls from file: \n";
         for (const auto& i : urls)
-            std::cout << '\t' << i << '\n';
+            std::cout << '\t' << i.url << '\n';
     }
 }
 
@@ -764,7 +811,7 @@ void resetWindows(std::vector<rect>& monitors)
 
 //Performs the effect of the watch, returns false if the update failed and the process needs to reset
 [[nodiscard]]
-bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::vector<std::string>& urls, std::vector<rect>& monitors)
+bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::vector<urlWithWatch>& urls, std::vector<rect>& monitors)
 {
     if (watch.onUpdate == fileWatch::action::RESET)
     {
@@ -781,9 +828,14 @@ bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::v
             processes[p].close();
             processes.erase(processes.begin() + p);
 
-            if (addProcess(processes, urls[p], settings.loadTime, p))
+            if (addProcess(processes, urls[p].url, settings.loadTime, p))
             {
                 processes[p].moveToMonitor(monitors[p]);
+                if (urls[p].watch)
+                {
+                    //Reset the action time
+                    urls[p].watch.value().lastTime = std::chrono::system_clock::now() + std::chrono::seconds(urls[p].watch.value().delaySeconds);
+                }
             }
             else
             {
@@ -893,7 +945,7 @@ int main(int argc, char** argv)
 
         //Read urls file
         std::chrono::system_clock::time_point lastUrlCheck = std::chrono::system_clock::now();
-        std::vector<std::string> urls = readUrls();
+        std::vector<urlWithWatch> urls = readUrls();
         printUrls(urls);
 
 
@@ -933,6 +985,23 @@ int main(int argc, char** argv)
                 lastUrlCheck = std::chrono::system_clock::now();
                 size_t urlCount = urls.size();
                 urls = readUrls();
+
+                //Reset the watch monitors to ensure they're still correct
+                for (auto& i : urls)
+                {
+                    if (!i.watch)
+                        continue;
+                    auto& watch = i.watch.value();
+                    auto it = std::find_if(processes.cbegin(), processes.cend(), [&](const process& proc) { return proc.url == i.url; });
+                    if (it == processes.cend())
+                    {
+                        std::cout << osm::feat(osm::col, "orange") << "Unable to bind event for \"" << i.url << "\" as it did not have an associated process.\n";
+                        continue;
+                    }
+                    auto idx = std::distance(processes.cbegin(), it);
+                    watch.relatedMonitors = { static_cast<int>(idx) };
+                }
+
                 printUrls(urls);
                 //Check if we've got a different number of urls now
                 displayStateChanged = urlCount != urls.size();
@@ -979,10 +1048,16 @@ int main(int argc, char** argv)
                 //If the process doesn't exist, but we have a monitor and a url for it, start it
                 if (i >= processes.size())
                 {
-                    std::cout << osm::feat(osm::col, "lt cyan") << "Starting \"" << urls[i] << "\"...\n";
-                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    std::cout << osm::feat(osm::col, "lt cyan") << "Starting \"" << urls[i].url << "\"...\n";
+                    if (addProcess(processes, urls[i].url, settings.loadTime, i))
                     {
                         processes[i].moveToMonitor(monitors[i]);
+                        if (urls[i].watch)
+                        {
+                            //Reset the action time
+                            urls[i].watch.value().lastTime = std::chrono::system_clock::now() + std::chrono::seconds(urls[i].watch.value().delaySeconds);
+                            urls[i].watch.value().relatedMonitors = { static_cast<int>(i) };
+                        }
                     }
                     else
                     {
@@ -992,15 +1067,21 @@ int main(int argc, char** argv)
                 }
 
                 //If the process url has changed, restart it with the new url
-                if (urls[i] != processes[i].url)
+                if (urls[i].url != processes[i].url)
                 {
-                    std::cout << osm::feat(osm::col, "lt cyan") << "\"" << processes[i].url << "\" has been changed to \"" << urls[i] << "\", restarting page...\n";
+                    std::cout << osm::feat(osm::col, "lt cyan") << "\"" << processes[i].url << "\" has been changed to \"" << urls[i].url << "\", restarting page...\n";
                     processes[i].close();
                     processes.erase(processes.begin() + i);
                     
-                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    if (addProcess(processes, urls[i].url, settings.loadTime, i))
                     {
                         processes[i].moveToMonitor(monitors[i]);
+                        if (urls[i].watch)
+                        {
+                            //Reset the action time
+                            urls[i].watch.value().lastTime = std::chrono::system_clock::now() + std::chrono::seconds(urls[i].watch.value().delaySeconds);
+                            urls[i].watch.value().relatedMonitors = { static_cast<int>(i) };
+                        }
                     }
                     else
                     {
@@ -1019,9 +1100,15 @@ int main(int argc, char** argv)
                     processes[i].close();
                     processes.erase(processes.begin() + i);
 
-                    if (addProcess(processes, urls[i], settings.loadTime, i))
+                    if (addProcess(processes, urls[i].url, settings.loadTime, i))
                     {
                         processes[i].moveToMonitor(monitors[i]);
+                        if (urls[i].watch)
+                        {
+                            //Reset the action time
+                            urls[i].watch.value().lastTime = std::chrono::system_clock::now() + std::chrono::seconds(urls[i].watch.value().delaySeconds);
+                            urls[i].watch.value().relatedMonitors = { static_cast<int>(i) };
+                        }
                     }
                     else
                     {
@@ -1070,6 +1157,26 @@ int main(int argc, char** argv)
                     //Reset the watched file time
                     i.lastTime = now + std::chrono::seconds(i.delaySeconds);
                     if (!applyWatch(i, processes, urls, monitors))
+                        goto reset;
+                }
+            }
+            for (auto& i : urls)
+            {
+                if (!i.watch)
+                    continue;
+                auto& watch = i.watch.value();
+                if (now > watch.lastTime)
+                {
+                    std::cout << osm::feat(osm::col, "lt cyan") << "Url refresh timer for [";
+                    for (size_t m = 0; m < watch.relatedMonitors.size() - 1; m++)
+                    {
+                        std::cout << m << ", ";
+                    }
+                    std::cout << watch.relatedMonitors.back();
+                    std::cout << "] has expired, applying changes...\n";
+                    //Reset the watched file time
+                    watch.lastTime = now + std::chrono::seconds(watch.delaySeconds);
+                    if (!applyWatch(watch, processes, urls, monitors))
                         goto reset;
                 }
             }
