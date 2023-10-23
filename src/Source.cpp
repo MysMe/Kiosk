@@ -881,7 +881,8 @@ int main(int argc, char** argv)
             "Basic kiosk system for displaying multiple web browser windows over multiple monitors.\n"
             "Does not accept any command line arguments, please write a " + std::string(settingsSource) + " file and place it local to the executable.\n"
             "The settings file should be formed of lines containing the details described below. Empty lines and lines starting with a # are ignored.\n"
-            "If a setting isn't provided, the default will be used. If a setting is provided multiple times, only the last value will be read with the exception of WATCH settings.\n\n"
+            "If a setting isn't provided, the default will be used. If a setting is provided multiple times, only the last value will be read with the exception of WATCH settings.\n"
+            "The URLs file can postfix any URL with [REFRESH|RESET] [INT], indicating an action that should be taken every [INT] seconds. URLs prefixed with a # are ignored.\n\n" << 
             "SETTINGS:\n";
 
         printSetting("EXECUTABLE [PATH] - The path to the browser executable.", settings.executableName);
