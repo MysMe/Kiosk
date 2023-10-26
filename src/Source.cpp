@@ -1146,7 +1146,7 @@ int main(int argc, char** argv)
             const auto now = std::chrono::system_clock::now();
             for (auto& i : refreshes)
             {
-                if (now > i.lastTime)
+                if (now > i.lastTime && !i.relatedMonitors.empty())
                 {
                     std::cout << osm::feat(osm::col, "lt cyan") << "Refresh timer for [";
                     for (size_t m = 0; m < i.relatedMonitors.size() - 1; m++)
@@ -1166,7 +1166,7 @@ int main(int argc, char** argv)
                 if (!i.watch)
                     continue;
                 auto& watch = i.watch.value();
-                if (now > watch.lastTime)
+                if (now > watch.lastTime && !watch.relatedMonitors.empty())
                 {
                     std::cout << osm::feat(osm::col, "lt cyan") << "Url refresh timer for [";
                     for (size_t m = 0; m < watch.relatedMonitors.size() - 1; m++)
