@@ -924,6 +924,9 @@ int main(int argc, char** argv)
 
         return 0;
     }
+
+    //Used in case of critical errors
+    restart:
     try
     {
         std::vector<fileWatch> watches;
@@ -1186,6 +1189,10 @@ int main(int argc, char** argv)
     catch (std::exception& ex)
     {
         std::cout << osm::feat(osm::col, "red") << ex.what() << "\n";
+        std::cout << "Restarting...\n";
+        //Add a delay so we don't mash the system if this error is continuous
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        goto restart;
     }
     catch (...)
     {
