@@ -1,16 +1,7 @@
 #pragma once
 #include <string>
 #include <array>
-
-//Path to settings file
-static constexpr auto settingsSource = "Settings.txt";
-
-struct settingDescription
-{
-	std::string name;
-	std::string description;
-    std::string defaultValue;
-};
+#include <sol/sol.hpp>
 
 struct appSettings
 {
@@ -42,33 +33,42 @@ struct appSettings
 
     //How many seconds to wait before checking files again
     int refreshTime = 2;
-    //Source urls file
-    std::string urlsFile = "URLs.txt";
 
     //Whether to close all instances of the process on start up
     bool closeAllOnStart = true;
     //How long to wait after starting a process before trying to pull its PID/HWND
     int loadTime = 1;
 
-    static constexpr auto getDefaults()
-    {
-        return std::array
-        {
-            settingDescription{ "executableName", "The executable location to be run", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" },
-            settingDescription{ "processName", "The process name of the executable", "msedge.exe" },
-            settingDescription{ "startArgs", "Args passed to process on start", "--new-window" },
-            settingDescription{ "monitorMode", "How to act when we don't have the correct number of monitors", "PASS" },
-            settingDescription{ "monitors", "Expected number of monitors", "1" },
-            settingDescription{ "refreshTime", "How many seconds to wait before checking files again", "2" },
-            settingDescription{ "urlsFile", "Source urls file", "URLs.txt" },
-            settingDescription{ "closeAllOnStart", "Whether to close all instances of the process on start up", "true" },
-            settingDescription{ "loadTime", "How long to wait after starting a process before trying to pull its PID/HWND", "1" }
-        };
-    }
+    //Which configuration to use
+    std::string configuration = "Default";
 
     static appSettings& get()
 	{
 		static appSettings settings;
 		return settings;
 	}
+
+    void loadFromTable(sol::state& table)
+    {
+        executableName = table.get_or("ExecutableName", executableName);
+		processName = table.get_or("ProcessName", processName);
+		startArgs = table.get_or("StartArgs", startArgs);
+
+        std::string monitorModeStr = table.get_or("MonitorMode", std::string());
+        if (!monitorModeStr.empty())
+		{
+            std::transform(monitorModeStr.begin(), monitorModeStr.end(), monitorModeStr.begin(), [](unsigned char c) { return std::toupper(c); });
+			auto it = std::find_if(monitorModeConversions.begin(), monitorModeConversions.end(), [&](const auto& pair) { return pair.first == monitorModeStr; });
+			if (it != monitorModeConversions.end())
+			{
+				monitorMode = it->second;
+			}
+		}
+
+		monitors = table.get_or("Monitors", monitors);
+		refreshTime = table.get_or("RefreshTime", refreshTime);
+		closeAllOnStart = table.get_or("CloseAllOnStart", closeAllOnStart);
+		loadTime = table.get_or("LoadTime", loadTime);
+        configuration = table.get_or("Configuration", configuration);
+    }
 };

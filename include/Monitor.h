@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include "Rect.h"
+#include <Psapi.h>
 
 //Called once for each monitor, records monitor details to the user data, which must be a std::vector<rect>
 BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT lprcMonitor, LPARAM dwData)
