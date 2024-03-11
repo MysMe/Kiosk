@@ -88,7 +88,7 @@ struct rect
 };
 
 //Called once for each monitor, records monitor details to the user data, which must be a std::vector<rect>
-BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT lprcMonitor, LPARAM dwData)
 {
     auto& monitors = *reinterpret_cast<std::vector<rect>*>(dwData);
     //Convert from a windows rect to our rect
@@ -129,7 +129,7 @@ class process
 
         //Generate the corresponding keyboard messages and send them
         UINT message = press ? WM_KEYDOWN : WM_KEYUP;
-        auto r = SendMessage(windowHandle, message, wParam, lParam);
+        SendMessage(windowHandle, message, wParam, lParam);
     }
 
 public:
@@ -255,7 +255,7 @@ std::vector<DWORD> getActiveProcesses()
     while (true)
     {
         DWORD bytesUsed;
-        if (!EnumProcesses(result.data(), result.size() * sizeof(DWORD), &bytesUsed))
+        if (!EnumProcesses(result.data(), static_cast<DWORD>(result.size() * sizeof(DWORD)), &bytesUsed))
         {
             throw std::exception("Failed to enumerate processes.");
         }
@@ -862,7 +862,7 @@ bool applyWatch(const basicWatch& watch, std::vector<process>& processes, std::v
     return true;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char**)
 {
     if (!SetConsoleCtrlHandler(closeHandler, TRUE))
     {

@@ -1,4 +1,4 @@
-.vs/*
-out*
 CMakeSettings.json
+vsxmake2022/*
+.xmake/*
 build/*
