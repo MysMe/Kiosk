@@ -1,0 +1,29 @@
+Watch
+	- File
+	- OnUpdate
+Process
+	- Watches
+	- OnTick
+	- OnOpen
+	- Url
+	- Monitor
+	- CacheBuster
+	-> Press
+	-> Click
+	-> Tick
+	-> Monitor
+	-> Refresh
+ProcessManager
+	- OnTick (Global)
+	- Enabled
+	- ForceLoad
+Settings
+	- ExecutableName
+	- ProcessName
+	- StartArgs
+	- MonitorMode
+	- Monitors
+	- RefreshTime
+	- CloseAllOnStart
+	- LoadTime
+	- Configuration
