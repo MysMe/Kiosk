@@ -6,7 +6,7 @@
 class processManager
 {
     std::vector<process> processes;
-    sol::function onTick;
+    sol::protected_function onTick;
 
     const std::vector<HWND>& getExistingHandles() const
     {
@@ -60,14 +60,21 @@ public:
         }
 
         if (onTick.valid())
-            onTick();
+        {
+            auto result = onTick();
+            if (!result.valid())
+            {
+                sol::error error = result;
+                std::cout << osm::feat(osm::col, "orange") << "Failed to run global tick function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
+            }
+        }
     }
 
     void loadFromTable(sol::state& table, std::string_view config)
     {
-        sol::table data = table[config].get_or(sol::table{});
+        sol::table data = table["Configurations"][config].get_or(sol::table{});
         if (!data.valid())
-            return;
+            throw std::runtime_error("Configurations table not found.");
 
         auto oldProcesses = std::move(processes);
         processes.clear();

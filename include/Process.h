@@ -28,8 +28,8 @@ class process
 
     std::vector<luaWatch> watches;
     size_t tickCount = 0;
-    sol::function onTick;
-    sol::function onOpen;
+    sol::protected_function onTick;
+    sol::protected_function onOpen;
 
     DWORD processID = 0;
     HWND windowHandle = nullptr;
@@ -136,7 +136,12 @@ class process
 			windowHandle = process->second;
             if (onOpen.valid())
 			{
-				onOpen(std::ref(*this));
+				auto result = onOpen(std::ref(*this));
+                if (!result.valid())
+                {
+                    sol::error error = result;
+                    std::cout << osm::feat(osm::col, "orange") << "Failed to run OnOpen function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
+                }
 			}
 		}
     }
@@ -253,9 +258,17 @@ public:
         checkMonitor();
         if (onTick.valid())
 		{
-            if (onTick(tickCount++, std::ref(*this)))
+            auto result = onTick(tickCount++, std::ref(*this));
+            if (result.valid())
             {
-                tickCount = 0;
+                bool val = result;
+                if (val)
+                    tickCount = 0;
+            }
+            else
+            {
+                sol::error error = result;
+                std::cout << osm::feat(osm::col, "orange") << "Failed to run tick function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
             }
 		}
         for (auto& watch : watches)
@@ -267,8 +280,8 @@ public:
     //Updates the non-url fields
     void updateFromTable(sol::table table)
     {
-        onTick = table.get_or("OnTick", sol::function{});
-        onOpen = table.get_or("OnOpen", sol::function{});
+        onTick = table.get_or("OnTick", sol::protected_function{});
+        onOpen = table.get_or("OnOpen", sol::protected_function{});
         monitor = table.get_or("Monitor", -1);
         watches.clear();
         if (auto toWatch = table["Watches"].get<sol::table>(); toWatch.valid())
