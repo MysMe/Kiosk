@@ -34,6 +34,7 @@ class process
     DWORD processID = 0;
     HWND windowHandle = nullptr;
     std::string url;
+    bool cacheBuster = false;
 
     //Attempts to move the window to the given area and full screen it
     void moveToMonitor(rect area) const
@@ -129,7 +130,15 @@ class process
     {
         if (valid())
             close();
-        auto process = startProcess(url, existing);
+
+        //Add the cache buster if required
+        auto toOpen = url;
+        if (cacheBuster)
+        {
+            toOpen += (url.find('?') == std::string::npos ? "?" : "&") + std::to_string(getCacheBuster());
+        }
+
+        auto process = startProcess(toOpen, existing);
         if (process)
 		{
 			processID = process->first;
@@ -146,7 +155,7 @@ class process
 		}
     }
 
-    auto cacheBuster() const
+    auto getCacheBuster() const
     {
         if (watches.empty())
             return std::filesystem::file_time_type::min().time_since_epoch().count();
@@ -167,6 +176,7 @@ public:
 		windowHandle = std::exchange(other.windowHandle, nullptr);
 		url = std::move(other.url);
         monitor = other.monitor;
+        cacheBuster = other.cacheBuster;
     }
     process& operator=(const process&) = delete;
     process& operator=(process&& other) noexcept
@@ -179,6 +189,7 @@ public:
         windowHandle = std::exchange(other.windowHandle, nullptr);
         url = std::move(other.url);
         monitor = other.monitor;
+        cacheBuster = other.cacheBuster;
         return *this;
     }
     ~process()
@@ -283,6 +294,7 @@ public:
         onTick = table.get_or("OnTick", sol::protected_function{});
         onOpen = table.get_or("OnOpen", sol::protected_function{});
         monitor = table.get_or("Monitor", -1);
+        cacheBuster = table.get_or("CacheBuster", false);
         watches.clear();
         if (auto toWatch = table["Watches"].get<sol::table>(); toWatch.valid())
         {
@@ -290,10 +302,6 @@ public:
             {
                 watches.push_back(luaWatch::loadFromTable(w.second));
             }
-        }
-        if (table.get_or("CacheBuster", false))
-        {
-            url += (url.find('?') == std::string::npos ? "?" : "&") + std::to_string(cacheBuster());
         }
     }
 

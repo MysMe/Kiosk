@@ -2,11 +2,13 @@
 #include "Monitor.h"
 #include "process.h"
 #include "Settings.h"
+#include <map>
 
 class processManager
 {
     std::vector<process> processes;
     sol::protected_function onTick;
+    size_t tickCount = 0;
 
     const std::vector<HWND>& getExistingHandles() const
     {
@@ -29,6 +31,7 @@ public:
         {
             p.setTick(value.value_or(0));
         }
+        tickCount = value.value_or(0);
     }
 
     void tick()
@@ -61,8 +64,14 @@ public:
 
         if (onTick.valid())
         {
-            auto result = onTick();
-            if (!result.valid())
+            auto result = onTick(tickCount++);
+            if (result.valid())
+            {
+                bool val = result;
+                if (val)
+                    tickCount = 0;
+            }
+            else
             {
                 sol::error error = result;
                 std::cout << osm::feat(osm::col, "orange") << "Failed to run global tick function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
@@ -79,6 +88,8 @@ public:
         auto oldProcesses = std::move(processes);
         processes.clear();
 
+        std::vector<std::pair<int, process>> indexedProcesses;
+
         onTick = data["OnTick"];
 
         for (auto& [k, v] : data)
@@ -89,6 +100,12 @@ public:
             //If this isn't enabled, skip it
             if (v.as<sol::table>()["Enabled"].get_or(true))
             {
+                if (!k.is<int>())
+                {
+                    std::cout << osm::feat(osm::col, "orange") << "Warning: Process key \"" << v.as<std::string>() << "\" is not an integer. It will not be considered.\n" << osm::feat(osm::rst, "all");
+                }
+                int key = k.as<int>();
+
                 bool forceLoad = false;
                 //If this has been set to always reload, set it to do so
                 if (v.as<sol::table>()["ForceLoad"].valid())
@@ -103,35 +120,40 @@ public:
 					{
 						if (it->getUrl() == url)
 						{
-                            processes.emplace_back(std::move(*it));
-                            processes.back().updateFromTable(v);
+                            auto temp = std::move(*it);
+                            temp.updateFromTable(v);
                             oldProcesses.erase(it);
                             forceLoad = false;
+                            indexedProcesses.emplace_back(key, std::move(temp));
 							break;
 						}
 					}
                 }
                 if (forceLoad)
-                    processes.emplace_back(process::loadFromTable(v));
+                    indexedProcesses.emplace_back(key, process::loadFromTable(v));
             }
         }
 
-        //We don't want these to intefere with the new processes, so close them now
+        //We don't want these to interfere with the new processes, so close them now
         oldProcesses.clear();
 
+        //Order by insertion
+        std::sort(indexedProcesses.begin(), indexedProcesses.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+
         //For every process with an unspecified monitor, give it the first unused monitor
-        for (auto& p : processes)
+        for (auto& [k, p] : indexedProcesses)
         {
             if (p.monitor == -1)
             {
                 //Find the lowest unused monitor index
-                bool found = false;
+                bool found = true;
                 int index = 0;
                 while (found)
                 {
-                    for (auto& u : processes)
+                    found = false;
+                    for (auto& [u, m] : indexedProcesses)
                     {
-                        if (u.monitor == index)
+                        if (m.monitor == index)
                         {
                             found = true;
                             index++;
@@ -142,6 +164,20 @@ public:
                 p.monitor = index;
             }
         }
+
+        //Remove any with a monitor index greater than the monitor count
+        indexedProcesses.erase(std::remove_if(indexedProcesses.begin(), indexedProcesses.end(), 
+            [](const auto& p) { return p.second.monitor >= appSettings::get().monitors || p.second.monitor < 0; }), indexedProcesses.end());
+
+        //Sort by monitor
+        std::sort(indexedProcesses.begin(), indexedProcesses.end(), [](const auto& a, const auto& b) { return a.second.monitor < b.second.monitor; });
+
+        processes.reserve(indexedProcesses.size());
+
+        for (auto& [k, p] : indexedProcesses)
+        {
+			processes.emplace_back(std::move(p));
+		}
 
         tick();
     }
