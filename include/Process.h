@@ -126,7 +126,7 @@ class process
         SetFocus(windowHandle);
     }
 
-    void start(std::span<HWND> existing)
+    void start(std::span<const HWND> existing)
     {
         if (valid())
             close();
@@ -260,7 +260,7 @@ public:
         return { windowBounds.left, windowBounds.top, windowBounds.right - windowBounds.left, windowBounds.bottom - windowBounds.top };
     }
 
-    void tick(std::span<HWND> existing)
+    void tick(std::span<const HWND> existing)
     {
         if (!valid())
         {

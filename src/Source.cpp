@@ -65,13 +65,7 @@ BOOL WINAPI closeHandler(DWORD signal)
 	return TRUE;
 }
 
-void resetWindows(std::vector<rect>& monitors)
-{
-	std::cout << osm::feat(osm::col, "orange") << "Resetting...\n" << osm::feat(osm::rst, "all");
-	monitors.clear();
-	closeAllExisting();
-}
-
+//This function is used to handle errors on the lua side, we only want to print the error and don't need to take special action
 inline void luaPanic(sol::optional<std::string> msg) 
 {
 	std::cout << osm::feat(osm::col, "red") << "A lua error occurred.";

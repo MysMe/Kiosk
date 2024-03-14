@@ -25,8 +25,7 @@ void createProcess(const std::string& path, const std::string& args)
 //Returns the PIDs of all active processes
 std::vector<DWORD> getActiveProcesses()
 {
-    std::vector<DWORD> result;
-    result.resize(1024);
+    std::vector<DWORD> result(1024);
 
     while (true)
     {
@@ -160,7 +159,7 @@ void closeAllExisting()
 
 //Starts a new instance of the process and adds it to the process list at the given location
 [[nodiscard]]
-std::optional<std::pair<DWORD, HWND>> startProcess(const std::string& url, std::span<HWND>& existing)
+std::optional<std::pair<DWORD, HWND>> startProcess(const std::string& url, std::span<const HWND>& existing)
 {
     //Start the process, give it a moment to load and then capture its ids
     createProcess(appSettings::get().executableName, url);

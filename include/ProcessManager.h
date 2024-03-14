@@ -10,14 +10,75 @@ class processManager
     sol::protected_function onTick;
     size_t tickCount = 0;
 
-    const std::vector<HWND>& getExistingHandles() const
+    const std::vector<HWND>& getExistingHandles(std::span<const HWND> otherHandles) const
     {
         //Cheeky little static variable to avoid reallocating every tick
         static std::vector<HWND> handles;
         handles.clear();
         for (const auto& p : processes)
             handles.push_back(p.getHandle());
+
+        for (auto h : otherHandles)
+        {
+			handles.push_back(h);
+		}
         return handles;
+    }
+
+    //Takes a list of other windows that may be closed soon, but not yet
+    void tickImpl(std::span<const HWND> dyingWindows)
+    {
+        auto monitors = getMonitors();
+        if (monitors.size() != appSettings::get().monitors)
+        {
+            switch (appSettings::get().monitorMode)
+            {
+            case appSettings::invalidMonitorMode::NONE:
+            {
+                //Close all windows but keep running
+                processes.clear();
+                return;
+            }
+            case appSettings::invalidMonitorMode::FAIL:
+            {
+                //Let the exception handler do its thing
+                throw std::runtime_error("Monitor count mismatch.");
+            }
+            default:
+                //Continue with the windows we have regardless
+                break;
+            }
+        }
+
+        //Use a reference wrapper as we may want to reassign the handles
+        auto handles = std::ref(getExistingHandles(dyingWindows));
+
+        for (auto& p : processes)
+        {
+            auto originalHandle = p.getHandle();
+            p.tick(handles.get());
+            if (p.getHandle() != originalHandle)
+			{
+				//If the handle has changed, we need to update the list
+				handles = std::ref(getExistingHandles(dyingWindows));
+			}
+        }
+
+        if (onTick.valid())
+        {
+            auto result = onTick(tickCount++);
+            if (result.valid())
+            {
+                bool val = result;
+                if (val)
+                    tickCount = 0;
+            }
+            else
+            {
+                sol::error error = result;
+                std::cout << osm::feat(osm::col, "orange") << "Failed to run global tick function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
+            }
+        }
     }
 
 public:
@@ -36,47 +97,7 @@ public:
 
     void tick()
     {
-        auto monitors = getMonitors();
-        if (monitors.size() != appSettings::get().monitors)
-        {
-            switch (appSettings::get().monitorMode)
-            {
-            case appSettings::invalidMonitorMode::NONE:
-            {
-                processes.clear();
-                return;
-            }
-            case appSettings::invalidMonitorMode::FAIL:
-            {
-                throw std::runtime_error("Monitor count mismatch.");
-            }
-            default:
-                break;
-            }
-        }
-
-        for (auto& p : processes)
-        {
-            //The handles can change during a tick, so we need to get them every time
-            auto handles = getExistingHandles();
-            p.tick(handles);
-        }
-
-        if (onTick.valid())
-        {
-            auto result = onTick(tickCount++);
-            if (result.valid())
-            {
-                bool val = result;
-                if (val)
-                    tickCount = 0;
-            }
-            else
-            {
-                sol::error error = result;
-                std::cout << osm::feat(osm::col, "orange") << "Failed to run global tick function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
-            }
-        }
+        tickImpl({});
     }
 
     void loadFromTable(sol::state& table, std::string_view config)
@@ -134,9 +155,6 @@ public:
             }
         }
 
-        //We don't want these to interfere with the new processes, so close them now
-        oldProcesses.clear();
-
         //Order by insertion
         std::sort(indexedProcesses.begin(), indexedProcesses.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 
@@ -179,6 +197,14 @@ public:
 			processes.emplace_back(std::move(p));
 		}
 
-        tick();
+        //Store the old handles so we don't double capture them
+        static std::vector<HWND> dyingHandles;
+        dyingHandles.clear();
+        for (auto& p : oldProcesses)
+		{
+			dyingHandles.push_back(p.getHandle());
+		}
+
+        tickImpl(dyingHandles);
     }
 };
