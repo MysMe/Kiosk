@@ -10,7 +10,7 @@ struct appSettings
     //The process name of the executable
     std::string processName = "msedge.exe";
     //Args passed to process on start
-    std::string startArgs = "--new-window";
+    std::string startArgs = "";
 
     enum class invalidMonitorMode
     {

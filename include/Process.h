@@ -162,6 +162,20 @@ class process
         return std::max_element(watches.begin(), watches.end(), [](const luaWatch& a, const luaWatch& b) { return a.getLastFileWrite() < b.getLastFileWrite(); })->getLastFileWrite().time_since_epoch().count();
     }
 
+    void luaPress(sol::variadic_args keys, bool shift, bool control, bool alt)
+    {
+        for (auto v : keys)
+        {
+            std::string k = v.get<std::string>();
+            std::transform(k.begin(), k.end(), k.begin(), [](unsigned char c) { return std::toupper(c); });
+            auto it = keyToCode.find(k);
+            if (it != keyToCode.end())
+            {
+                sendMessage(it->second, shift, control, alt);
+            }
+        }
+    }
+
 public:
 
     process(DWORD pid, HWND handle) : processID(pid), windowHandle(handle) {}
@@ -209,7 +223,7 @@ public:
     HWND getHandle() const { return windowHandle; }
 
     //Sends a keypress to the window
-    void sendMessage(WORD vkCode) const
+    void sendMessage(WORD vkCode, bool shiftPress = false, bool controlPress = false, bool altPress = false) const
     {
         if (!valid())
             return;
@@ -218,9 +232,25 @@ public:
         waitForProcessIdle();
         bringToForeground();
 
+        // If Shift, Control, or Alt is pressed, send their down events
+        if (shiftPress)
+            simulateKey(VK_SHIFT, true);
+        if (controlPress)
+            simulateKey(VK_CONTROL, true);
+        if (altPress)
+            simulateKey(VK_MENU, true);
+
         //Send a down, then an up (otherwise the window will think we're holding the key)
         simulateKey(vkCode, true);
         simulateKey(vkCode, false);
+
+        // If Shift, Control, or Alt was pressed, send their up events
+        if (shiftPress)
+            simulateKey(VK_SHIFT, false);
+        if (controlPress)
+            simulateKey(VK_CONTROL, false);
+        if (altPress)
+            simulateKey(VK_MENU, false);
     }
 
     void sendClick(int x, int y, sol::optional<int> buttonType) const
@@ -284,7 +314,7 @@ public:
 		}
         for (auto& watch : watches)
         {
-			watch.check();
+			watch.check(*this);
 		}
     }
 
@@ -317,22 +347,25 @@ public:
     static void initialiseLUAState(sol::state& lua)
 	{
 		lua.new_usertype<process>("process",
-			"press", [](process& p, sol::variadic_args keys) {
-                for (auto v : keys)
-                {
-                    std::string k = v.get<std::string>();
-                    std::transform(k.begin(), k.end(), k.begin(), [](unsigned char c) { return std::toupper(c); });
-                    auto it = keyToCode.find(k);
-                    if (it != keyToCode.end())
-                    {
-                        p.sendMessage(it->second);
-                    }
-                }
+			"Press", [](process& p, sol::variadic_args keys) {
+                p.luaPress(keys, false, false, false);
             },
-            "click", &process::sendClick,
-            "tick", sol::property(&process::tickCount, &process::tickCount),
-            "monitor", sol::readonly(&process::monitor),
-            "refresh", [](process& p) {
+            "ShiftPress", [](process& p, sol::variadic_args keys) {
+				p.luaPress(keys, true, false, false);
+			},
+            "ControlPress", [](process& p, sol::variadic_args keys) {
+                p.luaPress(keys, false, true, false);
+                },
+            "AltPress", [](process& p, sol::variadic_args keys) {
+                p.luaPress(keys, false, false, true);
+			},
+            "MixedPress", [](process& p, bool shift, bool control, bool alt, sol::variadic_args keys) {
+				p.luaPress(keys, shift, control, alt);
+			},
+            "Click", &process::sendClick,
+            "Tick", sol::property(&process::tickCount, &process::tickCount),
+            "Monitor", sol::readonly(&process::monitor),
+            "Refresh", [](process& p) {
                 p.sendMessage(VK_F5);
 			}
 		);

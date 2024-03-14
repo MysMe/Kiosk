@@ -14,7 +14,7 @@
 //Starts the given process with the provided arguments
 void createProcess(const std::string& path, const std::string& args)
 {
-    HINSTANCE hInstance = ShellExecuteA(nullptr, "open", path.c_str(), (args + " " + appSettings::get().startArgs).c_str(), nullptr, SW_SHOWDEFAULT);
+    HINSTANCE hInstance = ShellExecuteA(nullptr, "open", path.c_str(), (args + " --new-window " + appSettings::get().startArgs).c_str(), nullptr, SW_SHOWDEFAULT);
 
     if (reinterpret_cast<std::uintptr_t>(hInstance) <= HINSTANCE_ERROR)
     {

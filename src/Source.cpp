@@ -102,7 +102,7 @@ int main()
 
 			lua.set_function("SynchroniseTicks", &processManager::synchroniseTicks, std::ref(manager));
 			lua.set_function("StateHasChanged", [&]() { manager.needsRefresh = true; });
-			lua.set_function("Sleep", [](int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); });
+			lua.set_function("Sleep", [](unsigned int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); });
 
 			auto luaOutput = lua.safe_script_file("Kiosk.lua");
 
