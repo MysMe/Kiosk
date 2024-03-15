@@ -26,7 +26,7 @@ In addition, an *OnTick* function can be set, which is called every tick. This f
 
 ## Windows
 Each sub-table of a [*configuration*](#configurations) describes multiple windows, these windows have multiple properties that can be set:
-- **Enabled**: Whether or not this table should be considered. This value can be changed at runtime. Defaults to *true*.
+- **Enabled**: Whether or not this table should be considered. This can either be a fixed value (true/false) or a function returning true or false. When this is a function, it will be invoked each time the kiosk state is checked. Defaults to *true*.
 - **Url**: The url of the webpage that should be displayed.
 - **ForceLoad**: Whether this window should always be reopened when the window layout changes. Otherwise an existing window will be reused when possible. Defaults to *false*.
 - **OnTick(tickCount, window)**: A function that runs every tick. The function accepts an unsigned integer argument that represents the ticks elapsed. If this function returns true, the tick counter resets. The tick counter is unique for each window and the general tick function in the *configuration*. The window parameter can be used to modify this window, but not other windows on the kiosk ([see: *Window Functions And Members*](#window-functions-and-members)).

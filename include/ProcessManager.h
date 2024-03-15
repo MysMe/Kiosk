@@ -118,8 +118,30 @@ public:
             //If this isn't a table, skip it
             if (v.get_type() != sol::type::table)
                 continue;
+
+            bool enabled = false;
+            auto enabledFunc = v.as<sol::table>().get_or<sol::protected_function>("Enabled", {});
+            if (enabledFunc.valid())
+            {
+                auto result = enabledFunc();
+				if (result.valid())
+				{
+					enabled = result;
+				}
+				else
+				{
+					sol::error error = result;
+					std::cout << osm::feat(osm::col, "orange") << "Failed to run Enabled function: " << error.what() << ".\n" << osm::feat(osm::rst, "all");
+                    continue;
+				}
+            }
+			else
+			{
+				enabled = v.as<sol::table>()["Enabled"].get_or(true);
+			}
+
             //If this isn't enabled, skip it
-            if (v.as<sol::table>()["Enabled"].get_or(true))
+            if (enabled)
             {
                 if (!k.is<int>())
                 {
