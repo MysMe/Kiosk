@@ -42,6 +42,9 @@ struct appSettings
     //Which configuration to use
     std::string configuration = "Default";
 
+    //How long we wait for keypresses
+    int keyTimeMs = 50;
+
     static appSettings& get()
 	{
 		static appSettings settings;
@@ -70,5 +73,6 @@ struct appSettings
 		closeAllOnStart = table.get_or("CloseAllOnStart", closeAllOnStart);
 		loadTime = table.get_or("LoadTime", loadTime);
         configuration = table.get_or("Configuration", configuration);
+        keyTimeMs = table.get_or("KeyTimeMs", keyTimeMs);
     }
 };

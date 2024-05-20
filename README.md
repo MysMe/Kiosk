@@ -18,6 +18,7 @@ Settings are placed at global scope in the lua file, the following settings are 
 - **CloseAllOnStart**: Whether to close all instances of the process on start up. By default, this is set to *true*.
 - **LoadTime**: The number of seconds to wait after starting a process before trying to interact with it. By default, this is set to *1*.
 - **Configuration**: The name of the configuration to use ([see: *Configurations*](#configurations)). By default, this is set to *"Default"*. 
+- **KeyTimeMs**: How long to wait between keypresses, in milliseconds. By default this is set to *50*.
 
 ## Configurations
 Aside from settings, the system will look for a global table called *"Configurations"*, this table should contain sub-tables representing a valid screen layout. The name of the sub-table is the name that should be used with the *Configuration* setting. For shown windows, the sub-table must use numeric keys and the order of the keys determines which order the windows are considered in. Non-table entries are not considered.

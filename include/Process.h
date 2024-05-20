@@ -23,6 +23,8 @@ class process
         input.ki.dwFlags = press ? 0 : KEYEVENTF_KEYUP;
 
         SendInput(1, &input, sizeof(INPUT));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(appSettings::get().keyTimeMs));
     }
 
 
