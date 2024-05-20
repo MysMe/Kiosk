@@ -42,6 +42,9 @@ struct appSettings
     //Which configuration to use
     std::string configuration = "Default";
 
+    //How many times to a nudge a window after fullscreening
+    int nudges = 3;
+
     //How long we wait for keypresses
     int keyTimeMs = 50;
 
@@ -73,6 +76,7 @@ struct appSettings
 		closeAllOnStart = table.get_or("CloseAllOnStart", closeAllOnStart);
 		loadTime = table.get_or("LoadTime", loadTime);
         configuration = table.get_or("Configuration", configuration);
+        nudges = table.get_or("Nudges", nudges);
         keyTimeMs = table.get_or("KeyTimeMs", keyTimeMs);
     }
 };

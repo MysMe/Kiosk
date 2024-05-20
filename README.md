@@ -18,6 +18,7 @@ Settings are placed at global scope in the lua file, the following settings are 
 - **CloseAllOnStart**: Whether to close all instances of the process on start up. By default, this is set to *true*.
 - **LoadTime**: The number of seconds to wait after starting a process before trying to interact with it. By default, this is set to *1*.
 - **Configuration**: The name of the configuration to use ([see: *Configurations*](#configurations)). By default, this is set to *"Default"*. 
+- **Nudges**: How many times to "nudge" the window to prompt it to clear the F11 popup. By default this is set to *3*.
 - **KeyTimeMs**: How long to wait between keypresses, in milliseconds. By default this is set to *50*.
 
 ## Configurations

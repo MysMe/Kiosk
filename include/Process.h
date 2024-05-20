@@ -37,6 +37,7 @@ class process
     HWND windowHandle = nullptr;
     std::string url;
     bool cacheBuster = false;
+    int nudges = appSettings::get().nudges;
 
     //Attempts to move the window to the given area and full screen it
     void moveToMonitor(rect area) const
@@ -60,30 +61,27 @@ class process
                     sendMessage(VK_F11);
                 }
             }
-
-            //When edge full screens, it likes to put a pop-up telling you how to undo it, but it doesn't dissappear until the process gets some key inputs
-            //So after fullscreening, blast it with some inputs on the shift key (this shouldn't affect page content)
-            for (int i = 0; i < 10; i++)
-                sendMessage(VK_SHIFT);
         }
     }
 
-    void checkMonitor() const
+    bool checkMonitor() const
 	{
         //If we don't have a monitor set, don't bother checking
 		if (monitor == -1)
-			return;
+			return true;
 
         auto bounds = getBounds();
         auto monitors = getMonitors();
         //If the monitor is out of range, ignore it
         if (monitor >= monitors.size())
-			return;
+			return true;
         if (!bounds.approximately(monitors[monitor]))
         {
             //If the window is not on the correct monitor, move it
 			moveToMonitor(monitors[monitor]);
+            return false;
         }
+        return true;
 	}
 
     //Sends a close request to the window
@@ -298,7 +296,11 @@ public:
         {
             start(existing);
         }
-        checkMonitor();
+        if (!checkMonitor())
+        {
+            //Reset the nudge count if we had to reset the window
+            nudges = appSettings::get().nudges;
+        }
         if (onTick.valid())
 		{
             auto result = onTick(tickCount++, std::ref(*this));
@@ -318,6 +320,14 @@ public:
         {
 			watch.check(*this);
 		}
+
+        if (nudges > 0)
+        {
+            nudges--;
+            //We send a "nudge" to the window to convince it to stop showing the F11 popup
+            for (int i = 0; i < 10; i++)
+                sendMessage(VK_SHIFT);
+        }
     }
 
     //Updates the non-url fields
