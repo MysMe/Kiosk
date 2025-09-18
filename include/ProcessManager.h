@@ -1,8 +1,9 @@
 #pragma once
 #include "Monitor.h"
-#include "process.h"
+#include "Process.h"
 #include "Settings.h"
 #include <map>
+#include "PlatformTypes.h"
 
 class processManager
 {
@@ -10,10 +11,10 @@ class processManager
     sol::protected_function onTick;
     size_t tickCount = 0;
 
-    const std::vector<HWND>& getExistingHandles(std::span<const HWND> otherHandles) const
+    const std::vector<windowHandle>& getExistingHandles(std::span<const windowHandle> otherHandles) const
     {
         //Cheeky little static variable to avoid reallocating every tick
-        static std::vector<HWND> handles;
+        static std::vector<windowHandle> handles;
         handles.clear();
         for (const auto& p : processes)
             handles.push_back(p.getHandle());
@@ -26,10 +27,10 @@ class processManager
     }
 
     //Takes a list of other windows that may be closed soon, but not yet
-    void tickImpl(std::span<const HWND> dyingWindows)
+    void tickImpl(std::span<const windowHandle> dyingWindows)
     {
         auto monitors = getMonitors();
-        if (monitors.size() != appSettings::get().monitors)
+        if (static_cast<int>(monitors.size()) != appSettings::get().monitors)
         {
             switch (appSettings::get().monitorMode)
             {
@@ -220,7 +221,7 @@ public:
 		}
 
         //Store the old handles so we don't double capture them
-        static std::vector<HWND> dyingHandles;
+        static std::vector<windowHandle> dyingHandles;
         dyingHandles.clear();
         for (auto& p : oldProcesses)
 		{

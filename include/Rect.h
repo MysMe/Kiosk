@@ -2,7 +2,7 @@
 #include <cmath>
 
 //Returns true if l/r are within +/-v of each other
-bool within(int l, int r, int v)
+static bool within(int l, int r, int v)
 {
     return std::abs(l - r) <= v;
 }

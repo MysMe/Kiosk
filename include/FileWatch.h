@@ -2,6 +2,7 @@
 #include <string_view>
 #include <filesystem>
 #include <sol/sol.hpp>
+#include "osmanip/manipulators/colsty.hpp"
 
 class process;
 
