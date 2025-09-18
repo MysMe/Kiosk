@@ -1,10 +1,13 @@
 #include <osmanip/manipulators/colsty.hpp>
 #include "ProcessManager.h"
+#include <thread>
+#include <chrono>
 
 bool ansiEnabledPriorToExecution = false;
 
 void enableAnsiSequences()
 {
+	#ifdef _WIN32
 	std::cout << "Enabling ANSI escape sequences for this console session...\n";
 	//Get the handle to the console output
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -25,10 +28,12 @@ void enableAnsiSequences()
 	{
 		std::cout << "Ansi sequences already enabled!\n";
 	}
+	#endif
 }
 
 void disableAnsiSequences()
 {
+	#ifdef _WIN32
 	std::cout << "Disabling ANSI escape sequences for this console session...\n";
 	//Get the handle to the console output
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -39,6 +44,7 @@ void disableAnsiSequences()
 	consoleMode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 	//Set the updated mode
 	SetConsoleMode(hConsole, consoleMode);
+	#endif
 }
 
 //Clears any ansi state, existing processes and resets the terminal ansi status
@@ -53,6 +59,7 @@ void cleanUp()
 		disableAnsiSequences();
 }
 
+#ifdef _WIN32
 //Intercepts CTRL+C or close events and cleans up first
 BOOL WINAPI closeHandler(DWORD signal)
 {
@@ -64,6 +71,7 @@ BOOL WINAPI closeHandler(DWORD signal)
 	}
 	return TRUE;
 }
+#endif
 
 //This function is used to handle errors on the lua side, we only want to print the error and don't need to take special action
 inline void luaPanic(sol::optional<std::string> msg) 
@@ -76,10 +84,12 @@ inline void luaPanic(sol::optional<std::string> msg)
 
 int main()
 {
+	#ifdef _WIN32
 	if (!SetConsoleCtrlHandler(closeHandler, TRUE))
 	{
 		std::cout << "Error: Could not set control handler.\n";
 	}
+	#endif
 
 	enableAnsiSequences();
 	std::cout << osm::feat(osm::rst, "all");

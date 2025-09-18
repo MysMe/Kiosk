@@ -2,3 +2,5 @@ CMakeSettings.json
 vsxmake2022/*
 .xmake/*
 build/*
+.github/copilot-instructions.md
+.vscode/*
