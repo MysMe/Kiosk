@@ -1,7 +1,9 @@
 #ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#undef RGB //Windows leaks this macro and it conflicts with osmanip
 #include <string>
 #include <unordered_map>
-#include <Windows.h>
 #include "PlatformTypes.h"
 #include "Keymap.h"
 

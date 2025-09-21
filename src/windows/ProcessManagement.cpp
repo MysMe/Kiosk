@@ -1,7 +1,6 @@
 #ifdef _WIN32
-#define NOMINMAX
+#include <osmanip/manipulators/colsty.hpp>
 #include "ProcessManagement.h"
-#include <Windows.h>
 #include <Psapi.h>
 #include <thread>
 #include <chrono>
@@ -9,7 +8,10 @@
 #include <algorithm>
 #include <ranges>
 #include "Settings.h"
-#include <osmanip/manipulators/colsty.hpp>
+#include <iostream>
+#define NOMINMAX
+#include <Windows.h>
+#undef RGB //Windows leaks this macro and it conflicts with osmanip
 
 void createProcess(const std::string& path, const std::string& args)
 {
@@ -44,6 +46,9 @@ std::vector<processId> getActiveProcesses()
         }
     }
 }
+
+//Represents a PID and all visible windows associated with it
+using findWindowUserData = std::pair<DWORD, std::vector<HWND>>;
 
 BOOL CALLBACK EnumWindowsProc(windowHandle hwnd, LPARAM lParam)
 {
@@ -120,12 +125,13 @@ void closeAllExisting()
         PostMessage(i.second, WM_CLOSE, 0, 0);
 }
 
-std::optional<std::pair<processId, windowHandle>> startProcess(const std::string& url, std::span<const windowHandle>& existing)
+std::optional<std::pair<processId, windowHandle>> startProcess(const std::string& url, std::span<const windowHandle> existing, windowHandle self)
 {
     createProcess(appSettings::get().executableName, url);
     std::this_thread::sleep_for(std::chrono::seconds(appSettings::get().loadTime));
     auto instances = getMostRecentProcessesWithName(appSettings::get().processName);
-    std::erase_if(instances, [&](auto l) {return std::ranges::any_of(existing, [&](windowHandle r) { return r == l.second; }); });
+    std::erase_if(instances, [&](const auto& l) 
+        { return l.second != self && std::find(existing.begin(), existing.end(), l.second) != existing.end(); });
     if (instances.size() == 0)
     {
         std::cout << osm::feat(osm::col, "orange") << "Failed to register process and will reset. Consider increasing LOADTIME.\n" << osm::feat(osm::rst, "all");

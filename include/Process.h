@@ -22,7 +22,6 @@ class process
 
     bool valid() const;
 
-
     auto getCacheBuster() const
     {
         if (watches.empty())
@@ -30,7 +29,7 @@ class process
         return std::max_element(watches.begin(), watches.end(), [](const luaWatch& a, const luaWatch& b) { return a.getLastFileWrite() < b.getLastFileWrite(); })->getLastFileWrite().time_since_epoch().count();
     }
 
-        // Attempts to start the process and assign window handle
+    //Attempts to start the process and assign window handle
     void start(std::span<const windowHandle> existing, const windowHandle self) 
     {
         if (valid())
@@ -62,13 +61,14 @@ class process
 
     bool isInPosition(rect area) const;
 
-    // Checks if the window is on the correct monitor
+    //Checks if the window is on the correct monitor
     bool checkMonitor() const 
     {
         if (monitor == -1) return true;
         auto monitors = getMonitors();
         if (monitor >= static_cast<int>(monitors.size())) return true;
-        if (!isInPosition(monitors[monitor])) {
+        if (!isInPosition(monitors[monitor])) 
+        {
             moveToMonitor(monitors[monitor]);
             return false;
         }
@@ -132,7 +132,7 @@ public:
     std::string_view getUrl() const { return url; }
     windowHandle getHandle() const { return wHandle; }
 
-    void sendMessage(int vkCode, bool shiftPress = false, bool controlPress = false, bool altPress = false) const;
+    void sendMessage(keycode vkCode, bool shiftPress = false, bool controlPress = false, bool altPress = false) const;
     void sendClick(int x, int y, sol::optional<int> buttonType) const;
     rect getBounds() const;
 
@@ -196,7 +196,8 @@ public:
             }
         }
     }
-    static process loadFromTable(sol::table table) {
+    static process loadFromTable(sol::table table) 
+    {
 		process p({}, {});
         p.url = table.get<std::string>("Url");
         p.updateFromTable(table);
@@ -206,19 +207,24 @@ public:
     static void initialiseLUAState(sol::state& lua) 
         {
 		lua.new_usertype<process>("process",
-			"Press", [](process& p, sol::variadic_args keys) {
+			"Press", [](process& p, sol::variadic_args keys) 
+            {
                 p.luaPress(keys, false, false, false);
             },
-            "ShiftPress", [](process& p, sol::variadic_args keys) {
+            "ShiftPress", [](process& p, sol::variadic_args keys) 
+            {
 				p.luaPress(keys, true, false, false);
 			},
-            "ControlPress", [](process& p, sol::variadic_args keys) {
+            "ControlPress", [](process& p, sol::variadic_args keys) 
+            {
                 p.luaPress(keys, false, true, false);
                 },
-            "AltPress", [](process& p, sol::variadic_args keys) {
+            "AltPress", [](process& p, sol::variadic_args keys) 
+            {
                 p.luaPress(keys, false, false, true);
 			},
-            "MixedPress", [](process& p, bool shift, bool control, bool alt, sol::variadic_args keys) {
+            "MixedPress", [](process& p, bool shift, bool control, bool alt, sol::variadic_args keys) 
+            {
 				p.luaPress(keys, shift, control, alt);
 			},
             "Click", &process::sendClick,

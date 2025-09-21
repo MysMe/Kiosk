@@ -7,9 +7,10 @@
 
 bool isX11()
 {
-    // Check XDG_SESSION_TYPE for X11 session
+    //Check XDG_SESSION_TYPE for X11 session
     const char* sessionType = getenv("XDG_SESSION_TYPE");
-    if (!sessionType || std::string(sessionType) != "x11") {
+    if (!sessionType || std::string(sessionType) != "x11") 
+    {
         std::cerr << osm::feat(osm::col, "red") << "Error: Not running in an X11 session (found: " << (sessionType ? sessionType : "unset") << ").\n" << osm::feat(osm::rst, "all");
         return false;
     }
@@ -18,7 +19,7 @@ bool isX11()
 
 bool isChromium()
 {
-    // Check if the executable is a Chromium-based browser
+    //Check if the executable is a Chromium-based browser
     const auto& exe = appSettings::get().executableName;
 
     static constexpr auto chromiumBrowsers = {

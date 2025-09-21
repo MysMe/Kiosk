@@ -1,5 +1,5 @@
 #ifdef __linux__
-// Linux monitor enumeration using X11/Xinerama
+//Linux monitor enumeration using X11/Xinerama
 #include <X11/Xlib.h>
 #include <X11/extensions/Xinerama.h>
 #include <vector>

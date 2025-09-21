@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include "StartupChecks.h"
+#include <iostream>
 
 bool ansiEnabledPriorToExecution = false;
 

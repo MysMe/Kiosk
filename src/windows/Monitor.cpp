@@ -1,6 +1,7 @@
-#ifdef WIN32
+#ifdef _WIN32
 #define NOMINMAX
 #include <Windows.h>
+#undef RGB //Windows leaks this macro and it conflicts with osmanip
 #include <vector>
 #include <algorithm>
 #include "Rect.h"

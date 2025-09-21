@@ -17,21 +17,24 @@
 #include "Settings.h"
 #include <chrono>
 #include <thread>
+#include "osmanip/manipulators/colsty.hpp"
 
 void createProcess(const std::string& path, const std::string& args) 
 {
-    // Launch a process using fork and execvp
+    //Launch a process using fork and execvp
     pid_t pid = fork();
-    if (pid == 0) {
-        // Child process
-        // Set DISPLAY environment variable to :0 if not already set
-        if (!getenv("DISPLAY")) {
+    if (pid == 0) 
+    {
+        //Child process
+        //Set DISPLAY environment variable to :0 if not already set
+        if (!getenv("DISPLAY")) 
+        {
             setenv("DISPLAY", ":0", 1);
         }
-        // Build argument list
+        //Build argument list
         std::vector<std::string> argList;
         argList.push_back(path);
-        // Split args by spaces
+        //Split args by spaces
         std::istringstream iss(args);
         std::string token;
         while (iss >> std::quoted(token)) 
@@ -45,40 +48,51 @@ void createProcess(const std::string& path, const std::string& args)
             argList.push_back(token);
         }
         argList.push_back("--new-window");
-        // Convert to char* array
+        //Convert to char* array
         std::vector<char*> argv;
         for (auto& s : argList) argv.push_back(const_cast<char*>(s.c_str()));
         argv.push_back(nullptr);
         execvp(path.c_str(), argv.data());
-        // If execvp fails
+        //If execvp fails
         _exit(127);
-    } else if (pid < 0) {
-        // Fork failed
+    } 
+    else if (pid < 0) 
+    {
+        //Fork failed
         throw std::runtime_error("Failed to fork process");
     }
-    // Parent process: do nothing, child runs browser
+    //Parent process: do nothing, child runs browser
 }
 
-std::vector<processId> getActiveProcesses(std::string_view nameFilter = "") {
+std::vector<processId> getActiveProcesses(std::string_view nameFilter = "") 
+{
     std::vector<processId> result;
     DIR* proc = opendir("/proc");
     if (!proc) return result;
     struct dirent* entry;
-    while ((entry = readdir(proc)) != nullptr) {
-        // Only directories with all digits are PIDs
-        if (entry->d_type == DT_DIR) {
+    while ((entry = readdir(proc)) != nullptr) 
+    {
+        //Only directories with all digits are PIDs
+        if (entry->d_type == DT_DIR) 
+        {
             std::string pidStr(entry->d_name);
-            if (!pidStr.empty() && std::all_of(pidStr.begin(), pidStr.end(), ::isdigit)) {
+            if (!pidStr.empty() && std::all_of(pidStr.begin(), pidStr.end(), ::isdigit)) 
+            {
                 processId pid = static_cast<processId>(std::stoi(pidStr));
                 std::string commPath = "/proc/" + pidStr + "/comm";
                 std::ifstream commFile(commPath);
                 std::string procName;
-                if (commFile && std::getline(commFile, procName)) {
+                if (commFile && std::getline(commFile, procName)) 
+                {
                     if (!procName.empty() && procName.back() == '\n') procName.pop_back();
-                } else {
+                } 
+                else 
+                {
                     procName = "";
                 }
-                if (nameFilter.empty() || procName == nameFilter) {
+
+                if (nameFilter.empty() || procName == nameFilter) 
+                {
                     result.push_back(pid);
                 }
             }
@@ -87,8 +101,9 @@ std::vector<processId> getActiveProcesses(std::string_view nameFilter = "") {
     closedir(proc);
     return result;
 }
-void findWindowsByPID(Display* display, Atom atomPID, processId pId, std::vector<windowHandle>& result) {
-    // Query _NET_CLIENT_LIST_STACKING for all managed windows
+void findWindowsByPID(Display* display, Atom atomPID, processId pId, std::vector<windowHandle>& result) 
+{
+    //Query _NET_CLIENT_LIST_STACKING for all managed windows
     Window root = DefaultRootWindow(display);
     Atom netClientListStacking = XInternAtom(display, "_NET_CLIENT_LIST_STACKING", True);
     Atom actualType;
@@ -108,11 +123,13 @@ void findWindowsByPID(Display* display, Atom atomPID, processId pId, std::vector
         &bytesAfter,
         &prop
     );
-    if (status == Success && prop && nItems > 0) {
+    if (status == Success && prop && nItems > 0) 
+    {
         Window* stackingOrder = (Window*)prop;
-        for (unsigned long i = 0; i < nItems; ++i) {
+        for (unsigned long i = 0; i < nItems; ++i) 
+        {
             Window win = stackingOrder[i];
-            // Check _NET_WM_PID for each window
+            //Check _NET_WM_PID for each window
             Atom actualTypePID;
             int actualFormatPID;
             unsigned long nItemsPID, bytesAfterPID;
@@ -130,7 +147,8 @@ void findWindowsByPID(Display* display, Atom atomPID, processId pId, std::vector
                 &bytesAfterPID,
                 &propPID
             );
-            if (statusPID == Success && propPID && nItemsPID == 1) {
+            if (statusPID == Success && propPID && nItemsPID == 1) 
+            {
                 processId winPID = *(processId*)propPID;
                 if (winPID == pId) {
                     result.push_back(win);
@@ -142,21 +160,24 @@ void findWindowsByPID(Display* display, Atom atomPID, processId pId, std::vector
     }
 }
 
-std::vector<windowHandle> FindVisibleWindowsByProcessId(processId pId) {
+std::vector<windowHandle> FindVisibleWindowsByProcessId(processId pId) 
+{
     //Get the window handle for a given process id
     std::vector<windowHandle> result;
     Display* display = XOpenDisplay(nullptr);
     if (!display) return result;
     Atom atomPID = XInternAtom(display, "_NET_WM_PID", True);
-    if (atomPID != None) {
+    if (atomPID != None) 
+    {
         findWindowsByPID(display, atomPID, pId, result);
     }
     XCloseDisplay(display);
     return result;
 }
 
-std::vector<std::pair<processId, windowHandle>> getMostRecentProcessesWithName(const std::string& name) {
-    // Find all active processes
+std::vector<std::pair<processId, windowHandle>> getMostRecentProcessesWithName(const std::string& name) 
+{
+    //Find all active processes
     std::vector<std::pair<processId, windowHandle>> result;
     auto pids = getActiveProcesses(name);
     
@@ -173,27 +194,35 @@ std::vector<std::pair<processId, windowHandle>> getMostRecentProcessesWithName(c
     return result;
 }
 
-void closeAllExisting() {
-    // Find all browser processes by name and send SIGTERM
+void closeAllExisting() 
+{
+    //Find all browser processes by name and send SIGTERM
     auto processes = getMostRecentProcessesWithName(appSettings::get().processName);
-    for (const auto& [pid, win] : processes) {
-        kill(pid, SIGTERM); // or SIGKILL for force
+    for (const auto& [pid, win] : processes) 
+    {
+        kill(pid, SIGTERM); //or SIGKILL for force
     }
 }
 
 std::optional<std::pair<processId, windowHandle>> startProcess(const std::string& url, std::span<const windowHandle> existing, windowHandle self) 
 {
-    // Launch process
+    //Launch process
     createProcess(appSettings::get().executableName, url);
-    // Wait for process to start and window to appear
+    //Wait for process to start and window to appear
     std::this_thread::sleep_for(std::chrono::seconds(appSettings::get().loadTime));
     auto instances = getMostRecentProcessesWithName(appSettings::get().processName);
-    // Filter out windows already in 'existing'
-    std::erase_if(instances, [&](const auto& l) {
-        return l.second != self && std::find(existing.begin(), existing.end(), l.second) != existing.end();
-    });
-    if (instances.size() != 1) 
+    //Filter out windows already in 'existing'
+    std::erase_if(instances, [&](const auto& l) 
+        { return l.second != self && std::find(existing.begin(), existing.end(), l.second) != existing.end(); });
+    if (instances.size() == 0)
     {
+        std::cout << osm::feat(osm::col, "orange") << "Failed to register process and will reset. Consider increasing LOADTIME.\n" << osm::feat(osm::rst, "all");
+        closeAllExisting();
+        return std::nullopt;
+    }
+    if (instances.size() > 1)
+    {
+        std::cout << osm::feat(osm::col, "orange") << "Failed to register process and will reset. Too many processes were found.\n" << osm::feat(osm::rst, "all");
         closeAllExisting();
         return std::nullopt;
     }
