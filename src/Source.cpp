@@ -2,6 +2,7 @@
 #include "ProcessManager.h"
 #include <thread>
 #include <chrono>
+#include "StartupChecks.h"
 
 bool ansiEnabledPriorToExecution = false;
 
@@ -124,6 +125,12 @@ int main()
 			}
 
 			appSettings::get().loadFromTable(lua);
+
+			if (!runStartupChecks())
+			{
+				std::cout << "Startup checks failed, fix the above issues and restart.\n";
+				break;
+			}
 
 			if (appSettings::get().closeAllOnStart)
 				closeAllExisting();
