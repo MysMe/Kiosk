@@ -194,11 +194,27 @@ void process::close() const
 {
     if (valid())
     {
-        //Send SIGKILL to the process
-        if (pId > 0)
+        //Ask this specific window to close (WM_DELETE_WINDOW), the X11 equivalent of WM_CLOSE
+        //Chrome windows share a PID, so signalling the process would close all of them
+        auto oldHandler = XSetErrorHandler([](Display*, XErrorEvent*) { return 0; });
+        Display* display = XOpenDisplay(nullptr);
+        if (!display)
         {
-            kill(pId, SIGKILL);
+            XSetErrorHandler(oldHandler);
+            return;
         }
+
+        XEvent event = {};
+        event.xclient.type = ClientMessage;
+        event.xclient.window = wHandle;
+        event.xclient.message_type = XInternAtom(display, "WM_PROTOCOLS", False);
+        event.xclient.format = 32;
+        event.xclient.data.l[0] = XInternAtom(display, "WM_DELETE_WINDOW", False);
+        event.xclient.data.l[1] = CurrentTime;
+        XSendEvent(display, wHandle, False, NoEventMask, &event);
+        XFlush(display);
+        XCloseDisplay(display);
+        XSetErrorHandler(oldHandler);
     }
 }
 #endif
